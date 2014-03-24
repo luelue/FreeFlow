@@ -20,10 +20,13 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 
+import org.freeflow.BuildConfig;
+
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Rect;
 import android.support.v4.util.SimpleArrayMap;
+import android.support.v4.view.ViewCompat;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.util.Pair;
@@ -188,8 +191,6 @@ public class FreeFlowContainer extends AbsLayoutContainer {
 
 	@Override
 	protected void init(Context context) {
-		// usedViews = new HashMap<Object, FreeFlowItem>();
-		// usedHeaderViews = new HashMap<Object, FreeFlowItem>();
 
 		setWillNotDraw(false);
 
@@ -374,11 +375,10 @@ public class FreeFlowContainer extends AbsLayoutContainer {
 	 * @param newLayout
 	 */
 	public void setLayout(FreeFlowLayout newLayout) {
-
 		if (newLayout == mLayout || newLayout == null) {
 			return;
 		}
-
+		stopScrolling();
 		oldLayout = mLayout;
 		mLayout = newLayout;
 		shouldRecalculateScrollWhenComputingLayout = true;
@@ -398,6 +398,41 @@ public class FreeFlowContainer extends AbsLayoutContainer {
 	}
 
 	/**
+	 * Stops the scrolling immediately
+	 */
+	public void stopScrolling() {
+		if (!scroller.isFinished()) {
+			scroller.forceFinished(true);
+		}
+		removeCallbacks(flingRunnable);
+		resetAllCallbacks();
+		mTouchMode = TOUCH_MODE_REST;
+	}
+
+	/**
+	 * Resets all Runnables that are checking on various statuses
+	 */
+	protected void resetAllCallbacks() {
+		if (mPendingCheckForTap != null) {
+			removeCallbacks(mPendingCheckForTap);
+			mPendingCheckForTap = null;
+		}
+
+		if (mPendingCheckForLongPress != null) {
+			removeCallbacks(mPendingCheckForLongPress);
+			mPendingCheckForLongPress = null;
+		}
+		if (mTouchModeReset != null) {
+			removeCallbacks(mTouchModeReset);
+			mTouchModeReset = null;
+		}
+		if (mPerformClick != null) {
+			removeCallbacks(mPerformClick);
+			mPerformClick = null;
+		}
+	}
+
+	/**
 	 * @return The layout currently applied to the Container
 	 */
 	public FreeFlowLayout getLayout() {
@@ -413,7 +448,7 @@ public class FreeFlowContainer extends AbsLayoutContainer {
 	 * @see getViewportLeft
 	 * 
 	 */
-	private void computeViewPort(FreeFlowLayout newLayout) {
+	protected void computeViewPort(FreeFlowLayout newLayout) {
 		if (mLayout == null || frames == null || frames.size() == 0) {
 			viewPortX = 0;
 			viewPortY = 0;
@@ -663,6 +698,7 @@ public class FreeFlowContainer extends AbsLayoutContainer {
 		if (adapter == mAdapter) {
 			return;
 		}
+		stopScrolling();
 		logLifecycleEvent("setting adapter");
 		markAdapterDirty = true;
 
@@ -1083,8 +1119,8 @@ public class FreeFlowContainer extends AbsLayoutContainer {
 	}
 
 	@Override
-	protected void onDraw(Canvas canvas) {
-		super.onDraw(canvas);
+	public void draw(Canvas canvas) {
+		super.draw(canvas);
 
 		boolean needsInvalidate = false;
 
@@ -1135,9 +1171,9 @@ public class FreeFlowContainer extends AbsLayoutContainer {
 			canvas.restoreToCount(restoreCount);
 		}
 
-		if (needsInvalidate)
-			postInvalidateOnAnimation();
-
+		if (needsInvalidate) {
+			ViewCompat.postInvalidateOnAnimation(this);
+		}
 	}
 
 	protected void returnItemToPoolIfNeeded(FreeFlowItem freeflowItem) {
@@ -1306,8 +1342,8 @@ public class FreeFlowContainer extends AbsLayoutContainer {
 		}
 
 		boolean handled = false;
-		final long longPressId = mAdapter.getItemId(
-				beginTouchAt.itemSection, beginTouchAt.itemSection);
+		final long longPressId = mAdapter.getItemId(beginTouchAt.itemSection,
+				beginTouchAt.itemSection);
 		if (mOnItemLongClickListener != null) {
 			handled = mOnItemLongClickListener.onItemLongClick(this,
 					beginTouchAt.view, beginTouchAt.itemSection,
@@ -1582,8 +1618,7 @@ public class FreeFlowContainer extends AbsLayoutContainer {
 	public void scrollToItem(int sectionIndex, int itemIndex, boolean animate) {
 		Section section;
 
-		if (sectionIndex > mAdapter.getNumberOfSections()
-				|| sectionIndex < 0
+		if (sectionIndex > mAdapter.getNumberOfSections() || sectionIndex < 0
 				|| (section = mAdapter.getSection(sectionIndex)) == null) {
 			return;
 		}
@@ -1669,7 +1704,7 @@ public class FreeFlowContainer extends AbsLayoutContainer {
 	 * A flag for conditionally printing Container lifecycle events to LogCat
 	 * for debugging
 	 */
-	public boolean logDebugEvents = true;
+	public boolean logDebugEvents = false;
 
 	/**
 	 * A utility method for debugging lifecycle events and putting them in the
@@ -1678,7 +1713,7 @@ public class FreeFlowContainer extends AbsLayoutContainer {
 	 * @param msg
 	 */
 	private void logLifecycleEvent(String msg) {
-		if (logDebugEvents) {
+		if (logDebugEvents && BuildConfig.DEBUG) {
 			Log.d("ContainerLifecycleEvent", msg);
 		}
 	}
